@@ -30,7 +30,7 @@ class SimpleResBlock(nn.Module):
         return x + self.proj(x)
 
 
-def build_vision_projector(config, delay_load=False, **kwargs):
+def build_vision_projector(config, compression_rate=1, delay_load=False, **kwargs):
     projector_type = getattr(config, 'mm_projector_type', 'linear')
 
     if projector_type == 'linear':
@@ -42,7 +42,11 @@ def build_vision_projector(config, delay_load=False, **kwargs):
         modules = [nn.Linear(config.mm_hidden_size, config.hidden_size)]
         for _ in range(1, mlp_depth):
             modules.append(nn.GELU())
-            modules.append(nn.Linear(config.hidden_size, config.hidden_size))
+            out_size = config.hidden_size//compression_rate
+            # print(config.hidden_size)
+            # exit()
+            modules.append(nn.Linear(config.hidden_size, out_size))
+        # exit()
         return nn.Sequential(*modules)
 
     if projector_type == 'identity':
