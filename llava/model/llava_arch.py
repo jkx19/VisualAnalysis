@@ -17,11 +17,28 @@ from abc import ABC, abstractmethod
 
 import torch
 import torch.nn as nn
+from sklearn.cluster import KMeans
+import numpy as np
 
 from .multimodal_encoder.builder import build_vision_tower
 from .multimodal_projector.builder import build_vision_projector
 
 from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+
+
+def cluster_img_features(image_features: torch.Tensor, k):
+    device = image_features.device
+    image_features = image_features.cpu()
+    img_feat = image_features.numpy()
+    kmeans = KMeans(n_clusters=k, random_state=0, n_init="auto").fit(img_feat)
+    labels = kmeans.labels_
+    unique, counts = np.unique(labels, return_counts=True)
+    weight = dict(zip(unique, counts))
+    oids = kmeans.cluster_centers_
+    for i in range(len(oids)):
+        oids[i] = oids[i]*weight[i]
+    return torch.from_numpy(oids).to(device).to(torch.float16)
+
 
 
 class LlavaMetaModel:
@@ -176,6 +193,10 @@ class LlavaMetaForCausalLM(ABC):
                 cur_new_labels.append(cur_labels_noim[i])
                 if i < num_images:
                     cur_image_features = image_features[cur_image_idx]
+                    # print(cur_image_features)
+                    cur_image_features = cluster_img_features(cur_image_features, 24)
+                    # print(cur_image_features.shape)
+                    # exit()
                     cur_image_idx += 1
                     cur_new_input_embeds.append(cur_image_features)
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=cur_labels.device, dtype=cur_labels.dtype))
@@ -236,6 +257,7 @@ class LlavaMetaForCausalLM(ABC):
 
         if _position_ids is None:
             position_ids = None
+        # print(new_input_embeds.shape)
 
         return None, position_ids, attention_mask, past_key_values, new_input_embeds, new_labels
 
